@@ -1,0 +1,81 @@
+[project]
+name = "cursor-streamlit-mcp"
+version = "0.1.0"
+description = "Splunk MCP-enabled RAG agent with LangGraph, Streamlit, and FastAPI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "streamlit>=1.39.0",
+    "langgraph>=0.2.45",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-chroma>=0.1.4",
+    "langchain-community>=0.3.0",
+    "chromadb>=0.5.0",
+    "langsmith>=0.1.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "python-multipart>=0.0.12",
+    "websockets>=13.0",
+    "pyyaml>=6.0.2",
+    "pypdf>=5.0.0",
+    "python-docx>=1.1.2",
+    "openai>=1.51.0",
+    "tiktoken>=0.7.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7.0",
+    "watchdog>=3.0.0",  # Improves Streamlit auto-reload performance
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "B904",   # Allow raising exceptions without from e
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+
+[tool.ty]
+# ty configuration - see https://docs.astral.sh/ty/reference/configuration/
+# Rules must be set to "ignore", "warn", or "error"
+
+[tool.ty.rules]
+# Error on critical issues
+possibly-unresolved-reference = "error"
+unresolved-import = "error"
+call-non-callable = "error"
+division-by-zero = "error"
+invalid-argument-type = "error"
+invalid-return-type = "error"
+unknown-argument = "error"
+# Warn on potential issues
+possibly-missing-attribute = "warn"
+unused-ignore-comment = "warn"

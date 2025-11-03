@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "splunk-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://cloud-architects.api.scs.splunk.com/cloud-architects/mcp/v1/",
+        "--header",
+        "Content-Type: application/json",
+        "--header",
+        "Authorization: Bearer ${SPLUNK_MCP_TOKEN}"
+      ],
+      "enabled": true
+    },
+    "atlassian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.atlassian.com/v1/sse"
+      ],
+      "enabled": true
+    }
+  }
+}
+
