@@ -51,15 +51,20 @@ cp .env.example .env
 
 ### 3. Configure MCP servers
 
-Edit `config/mcp_servers.yaml` to configure your Splunk and Atlassian MCP server connections.
+Edit `config/mcp_servers.json` to configure your Splunk and Atlassian MCP server connections.
 
 ### 4. Run the application
 
+Assuming you are in the project root:
 ```bash
 # Terminal 1: Start FastAPI backend
+./scripts/run_backend.sh
+-or-
 uv run uvicorn backend.main:app --reload --host localhost --port 8000
 
 # Terminal 2: Start Streamlit frontend
+./scripts/run_frontend.sh
+-or-
 uv run streamlit run frontend/app.py
 ```
 
@@ -75,21 +80,21 @@ uv run streamlit run frontend/app.py
 
 ```bash
 # Run ruff linting
-uv run ruff check .
+uvx ruff check
 
 # Auto-fix issues
-uv run ruff check --fix .
+uvx ruff check --fix
 
 # Format code
-uv run ruff format .
+uvx ruff format
 ```
 
 ### Type Checking
 
 ```bash
 # Run type checking with ty
-uv run ty backend/
-uv run ty frontend/
+uvx ty backend/
+uvx ty frontend/
 ```
 
 ## Project Structure

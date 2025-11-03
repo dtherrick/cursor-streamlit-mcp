@@ -56,13 +56,10 @@ class MCPServerManager:
 
         self._initialized = True
         logger.info(
-            f"MCP server initialization complete. "
-            f"Connected to {len(self.tools)} server(s)."
+            f"MCP server initialization complete. Connected to {len(self.tools)} server(s)."
         )
 
-    async def _connect_server(
-        self, server_name: str, server_config: MCPServerConfig
-    ) -> None:
+    async def _connect_server(self, server_name: str, server_config: MCPServerConfig) -> None:
         """
         Connect to a specific MCP server by spawning its process.
 
@@ -89,9 +86,7 @@ class MCPServerManager:
             tools = await self._initialize_mcp_connection(server_name, process)
             self.tools[server_name] = tools
 
-            logger.info(
-                f"Loaded {len(tools)} tool(s) from MCP server '{server_name}'"
-            )
+            logger.info(f"Loaded {len(tools)} tool(s) from MCP server '{server_name}'")
 
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {e}")
@@ -156,17 +151,13 @@ class MCPServerManager:
             tools_response = await self._read_jsonrpc(process)
 
             if "error" in tools_response:
-                logger.error(
-                    f"Error listing tools for {server_name}: {tools_response['error']}"
-                )
+                logger.error(f"Error listing tools for {server_name}: {tools_response['error']}")
                 return tools
 
             # Convert MCP tools to LangChain tools
             mcp_tools = tools_response.get("result", {}).get("tools", [])
             for mcp_tool in mcp_tools:
-                langchain_tool = self._convert_mcp_tool(
-                    server_name, mcp_tool, process
-                )
+                langchain_tool = self._convert_mcp_tool(server_name, mcp_tool, process)
                 tools.append(langchain_tool)
 
         except Exception as e:
@@ -198,7 +189,9 @@ class MCPServerManager:
                 # Send tool call request
                 call_request = {
                     "jsonrpc": "2.0",
-                    "id": asyncio.current_task().get_name() if asyncio.current_task() else "tool-call",  # type: ignore[union-attr]
+                    "id": asyncio.current_task().get_name()
+                    if asyncio.current_task()
+                    else "tool-call",  # type: ignore[union-attr]
                     "method": "tools/call",
                     "params": {"name": tool_name, "arguments": kwargs},
                 }

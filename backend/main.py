@@ -67,7 +67,7 @@ async def lifespan(_app: FastAPI):
         # Load MCP configuration (DISABLED for initial testing)
         logger.info("MCP server integration temporarily disabled")
         mcp_manager = None
-        
+
         # Uncomment below to enable MCP servers:
         config_path = Path("config/mcp_servers.json")
         if config_path.exists():

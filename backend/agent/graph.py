@@ -61,7 +61,9 @@ class SplunkMCPAgent:
         from langgraph.checkpoint.memory import MemorySaver
 
         self.checkpointer = MemorySaver()
-        logger.info("Using in-memory checkpointer (conversation state will not persist across restarts)")
+        logger.info(
+            "Using in-memory checkpointer (conversation state will not persist across restarts)"
+        )
 
         # Build the graph
         self.graph: Any = self._build_graph()  # CompiledGraph type

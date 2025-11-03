@@ -153,9 +153,9 @@ async def get_mcp_info(thread_id: str) -> ChatResponse:
             response_parts.append(f"\n**{server_name}**")
             response_parts.append(f"  - Command: `{server_config.command}`")
             response_parts.append(f"  - Tools: {len(server_tools)}")
-            
+
             if server_tools:
-                response_parts.append(f"  - Available tools:")
+                response_parts.append("  - Available tools:")
                 for tool in server_tools[:10]:  # Limit to first 10
                     response_parts.append(f"    • `{tool.name}`: {tool.description[:80]}...")
                 if len(server_tools) > 10:

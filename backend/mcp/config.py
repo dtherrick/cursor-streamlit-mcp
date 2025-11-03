@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 from string import Template
-from typing import Any
 
 from pydantic import BaseModel, Field
 
