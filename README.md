@@ -118,12 +118,25 @@ uvx ty frontend/
 ├── frontend/
 │   └── app.py                     # Streamlit application
 ├── config/
-│   └── mcp_servers.yaml           # MCP server configurations
+│   └── mcp_servers.json           # MCP server configurations
 ├── data/
 │   ├── uploads/                   # User document uploads
-│   └── chroma_db/                 # ChromaDB persistence
+│   ├── chroma_db/                 # ChromaDB persistence
+│   └── checkpoints/               # Conversation state checkpoints
+├── scripts/
+│   ├── run_backend.sh             # Backend startup script
+│   └── run_frontend.sh            # Frontend startup script
+├── docs/
+│   ├── TESTING.md                 # Testing guide and scenarios
+│   ├── QUICKSTART.md              # Quick start guide
+│   ├── IMPLEMENTATION_SUMMARY.md  # Technical implementation details
+│   ├── MCP_INTEGRATION_NOTES.md   # MCP server integration guide
+│   ├── TYPE_CHECKING_NOTES.md     # Type checking with ty
+│   ├── CHANGES_SUMMARY.md         # Recent changes log
+│   └── SLASH_COMMANDS.md          # Chat slash commands reference
 ├── pyproject.toml
-└── .env.example
+├── .env.example
+└── README.md
 ```
 
 ## License
