@@ -15,11 +15,12 @@ from backend.agent.state import AgentState
 logger = logging.getLogger(__name__)
 
 # Tools that require human approval before execution
+# Format: {server_name}_{tool_name}
 SENSITIVE_TOOLS = {
-    "splunk-mcp_run_splunk_query",  # Splunk queries may be sensitive
-    "splunk-mcp_execute_sql",  # Any SQL execution
-    "run_splunk_query",  # Legacy placeholder tool name
-    "execute_sql",  # Legacy placeholder tool name
+    "splunk-mcp_run_splunk_query",  # Splunk SPL queries
+    "splunk-mcp_run_query",  # Alternative Splunk query tool
+    "splunk-mcp_execute_query",  # Alternative Splunk query tool
+    # Add more sensitive tools as needed based on /mcp output
 }
 
 

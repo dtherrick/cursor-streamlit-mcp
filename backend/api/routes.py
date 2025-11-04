@@ -341,7 +341,35 @@ async def chat(request: ChatRequest) -> ChatResponse:
         # Check for interrupts (HITL)
         if "__interrupt__" in result:
             requires_approval = True
-            approval_details = result["__interrupt__"]
+            interrupts = result["__interrupt__"]
+            
+            logger.info(f"Interrupt detected. Type: {type(interrupts)}")
+            
+            # interrupts is a list of Interrupt objects
+            # Extract the value from the first interrupt and ensure it's a dict
+            if isinstance(interrupts, list) and len(interrupts) > 0:
+                interrupt_obj = interrupts[0]
+                logger.debug(f"Interrupt object type: {type(interrupt_obj)}")
+                
+                # The interrupt object has a .value attribute containing the actual data
+                if hasattr(interrupt_obj, "value"):
+                    value = interrupt_obj.value
+                    # Ensure it's a dict
+                    if isinstance(value, dict):
+                        approval_details = value
+                    else:
+                        approval_details = {"value": value}
+                    logger.debug(f"Approval details extracted: {approval_details}")
+                else:
+                    approval_details = {
+                        "message": "Action requires approval",
+                        "raw_interrupt": str(interrupt_obj)
+                    }
+            else:
+                approval_details = {
+                    "message": "Action requires approval", 
+                    "interrupts": str(interrupts)
+                }
 
         return ChatResponse(
             response=response_text,
