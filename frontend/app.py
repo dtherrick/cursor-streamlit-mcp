@@ -29,6 +29,9 @@ def init_session_state() -> None:
 
     if "pending_approval" not in st.session_state:
         st.session_state.pending_approval = None
+    
+    if "conversation_history" not in st.session_state:
+        st.session_state.conversation_history = []
 
 
 def check_api_health() -> dict[str, Any] | None:
@@ -140,12 +143,77 @@ def render_sidebar() -> None:
         # Thread info
         st.subheader("Session Info")
         st.text(f"Thread ID: {st.session_state.thread_id[:8]}...")
+        
+        # Message count
+        st.text(f"Messages: {len(st.session_state.messages)}")
+        
+        # Saved conversations count
+        if st.session_state.conversation_history:
+            st.text(f"Saved: {len(st.session_state.conversation_history)}")
 
-        if st.button("New Conversation"):
-            st.session_state.thread_id = str(uuid.uuid4())
-            st.session_state.messages = []
-            st.session_state.pending_approval = None
-            st.rerun()
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("💬 New Chat", use_container_width=True):
+                # Save current conversation if it has messages
+                if st.session_state.messages:
+                    st.session_state.conversation_history.append({
+                        "thread_id": st.session_state.thread_id,
+                        "messages": st.session_state.messages.copy(),
+                        "timestamp": __import__('datetime').datetime.now().isoformat(),
+                    })
+                
+                # Start new conversation
+                st.session_state.thread_id = str(uuid.uuid4())
+                st.session_state.messages = []
+                st.session_state.pending_approval = None
+                st.success("✅ New chat started! Previous chat saved.")
+                st.rerun()
+        
+        with col2:
+            if st.button("🗑️ Clear All", use_container_width=True):
+                st.session_state.thread_id = str(uuid.uuid4())
+                st.session_state.messages = []
+                st.session_state.pending_approval = None
+                st.warning("🗑️ Chat cleared (not saved)")
+                st.rerun()
+        
+        # Show saved conversations
+        if st.session_state.conversation_history:
+            st.divider()
+            st.subheader("💾 Saved Chats")
+            
+            for i, conv in enumerate(reversed(st.session_state.conversation_history)):
+                thread_preview = conv["thread_id"][:8]
+                msg_count = len(conv["messages"])
+                timestamp = conv.get("timestamp", "Unknown")
+                
+                # Format timestamp nicely
+                try:
+                    import datetime
+                    dt = datetime.datetime.fromisoformat(timestamp)
+                    time_str = dt.strftime("%b %d, %H:%M")
+                except Exception:
+                    time_str = timestamp
+                
+                if st.button(
+                    f"📝 {time_str} ({msg_count} msgs)",
+                    key=f"load_conv_{i}",
+                    use_container_width=True
+                ):
+                    # Save current conversation if it has messages
+                    if st.session_state.messages:
+                        st.session_state.conversation_history.insert(0, {
+                            "thread_id": st.session_state.thread_id,
+                            "messages": st.session_state.messages.copy(),
+                            "timestamp": __import__('datetime').datetime.now().isoformat(),
+                        })
+                    
+                    # Load the selected conversation
+                    st.session_state.thread_id = conv["thread_id"]
+                    st.session_state.messages = conv["messages"].copy()
+                    st.session_state.pending_approval = None
+                    st.rerun()
 
         st.divider()
 

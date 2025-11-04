@@ -4,9 +4,10 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Type
 
 from langchain_core.tools import BaseTool, StructuredTool
+from pydantic import BaseModel, create_model
 
 from backend.mcp.config import MCPConfig, MCPServerConfig, get_enabled_servers
 
@@ -36,6 +37,7 @@ class MCPServerManager:
         self.tools: dict[str, list[BaseTool]] = {}
         self.processes: dict[str, asyncio.subprocess.Process] = {}
         self._initialized = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def initialize(self) -> None:
         """
@@ -48,6 +50,9 @@ class MCPServerManager:
             return
 
         logger.info("Initializing MCP server connections...")
+        
+        # Store the event loop that creates the subprocesses
+        self._loop = asyncio.get_running_loop()
 
         for server_name, server_config in self.enabled_servers.items():
             try:
@@ -208,6 +213,8 @@ class MCPServerManager:
         tool_name = mcp_tool["name"]
         tool_description = mcp_tool.get("description", f"Tool: {tool_name}")
         input_schema = mcp_tool.get("inputSchema", {})
+        
+        logger.debug(f"Converting tool {tool_name} with schema: {input_schema}")
 
         def tool_func(**kwargs: Any) -> str:
             """Execute the MCP tool."""
@@ -215,46 +222,122 @@ class MCPServerManager:
             logger.debug(f"Tool arguments: {kwargs}")
             
             try:
-                import asyncio
-                
-                # Check if we're in an async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    logger.debug("Running in async context, using run_coroutine_threadsafe")
-                    
-                    # Create a new thread to run the async call
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._execute_mcp_tool(server_name, tool_name, kwargs, process),
-                        loop
-                    )
-                    result = future.result(timeout=30)
-                    
-                    logger.info(f"✅ MCP tool {server_name}_{tool_name} completed successfully")
-                    return result
-                    
-                except RuntimeError:
-                    # No running loop, create a new one
-                    logger.debug("No running loop, creating new event loop")
-                    result = asyncio.run(
-                        self._execute_mcp_tool(server_name, tool_name, kwargs, process)
-                    )
-                    logger.info(f"✅ MCP tool {server_name}_{tool_name} completed successfully")
-                    return result
+                # Use the manager's event loop to execute the async call
+                # This ensures we use the same loop where the subprocess was created
+                result = self._execute_tool_sync(server_name, tool_name, kwargs, process)
+                logger.info(f"✅ MCP tool {server_name}_{tool_name} completed successfully")
+                return result
 
-            except asyncio.TimeoutError:
-                error_msg = f"⏱️ Timeout: {tool_name} exceeded 30s limit"
-                logger.error(error_msg)
-                return error_msg
             except Exception as e:
                 error_msg = f"❌ Error executing {tool_name}: {str(e)}"
                 logger.error(error_msg, exc_info=True)
                 return error_msg
 
+        # Convert JSON schema to Pydantic model if available
+        args_model = None
+        if input_schema and "properties" in input_schema:
+            args_model = self._create_pydantic_model(tool_name, input_schema)
+        
         return StructuredTool.from_function(
             func=tool_func,  # Synchronous wrapper
             name=f"{server_name}_{tool_name}",
             description=tool_description,
+            args_schema=args_model,  # Pydantic model for arguments
         )
+
+    def _create_pydantic_model(self, tool_name: str, json_schema: dict[str, Any]) -> Type[BaseModel]:
+        """
+        Create a Pydantic model from a JSON schema.
+
+        Args:
+            tool_name: Name of the tool (for model naming)
+            json_schema: JSON schema definition
+
+        Returns:
+            Pydantic model class
+        """
+        properties = json_schema.get("properties", {})
+        required = json_schema.get("required", [])
+        
+        # Build field definitions for Pydantic
+        field_definitions = {}
+        for prop_name, prop_schema in properties.items():
+            prop_type = self._json_type_to_python(prop_schema)
+            
+            # Check if field is required
+            if prop_name in required:
+                # Required field
+                default = ...  # Ellipsis means required in Pydantic
+            else:
+                # Optional field with None default
+                default = None
+                prop_type = prop_type | None  # type: ignore[assignment]
+            
+            # Add description if available
+            description = prop_schema.get("description", "")
+            
+            field_definitions[prop_name] = (prop_type, default)
+        
+        # Create the model
+        model_name = f"{tool_name.replace('-', '_').title()}Args"
+        return create_model(model_name, **field_definitions)  # type: ignore[call-overload]
+    
+    def _json_type_to_python(self, schema: dict[str, Any]) -> type:
+        """
+        Convert JSON schema type to Python type.
+
+        Args:
+            schema: JSON schema for a property
+
+        Returns:
+            Python type
+        """
+        json_type = schema.get("type", "string")
+        
+        type_mapping = {
+            "string": str,
+            "number": float,
+            "integer": int,
+            "boolean": bool,
+            "array": list,
+            "object": dict,
+        }
+        
+        return type_mapping.get(json_type, str)
+
+    def _execute_tool_sync(
+        self, server_name: str, tool_name: str, arguments: dict[str, Any], process: asyncio.subprocess.Process
+    ) -> str:
+        """
+        Execute MCP tool synchronously by scheduling on the correct event loop.
+
+        Args:
+            server_name: Name of the MCP server
+            tool_name: Name of the tool
+            arguments: Tool arguments
+            process: MCP server process
+
+        Returns:
+            Tool result as string
+        """
+        if not self._loop:
+            raise RuntimeError("MCP manager not properly initialized - no event loop stored")
+        
+        # Schedule the coroutine on the stored event loop
+        future = asyncio.run_coroutine_threadsafe(
+            self._execute_mcp_tool(server_name, tool_name, arguments, process),
+            self._loop
+        )
+        
+        # Wait for result with timeout
+        try:
+            result = future.result(timeout=30)
+            return result
+        except TimeoutError:
+            return f"⏱️ MCP tool call timed out after 30s"
+        except Exception as e:
+            logger.error(f"Error in _execute_tool_sync: {e}", exc_info=True)
+            return f"Error: {str(e)}"
 
     async def _execute_mcp_tool(
         self, server_name: str, tool_name: str, arguments: dict[str, Any], process: asyncio.subprocess.Process

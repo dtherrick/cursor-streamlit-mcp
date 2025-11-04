@@ -125,8 +125,8 @@ async def get_mcp_info(thread_id: str) -> ChatResponse:
     """Get MCP server and tools information."""
     if not mcp_manager:
         response = (
-            "**MCP Server Status**: Not enabled\n\n"
-            "MCP servers are currently disabled. To enable:\n"
+            "### 🔌 MCP Server Status: Not Enabled\n\n"
+            "MCP servers are currently disabled. To enable:\n\n"
             "1. Configure servers in `config/mcp_servers.json`\n"
             "2. Uncomment MCP initialization in `backend/main.py`\n"
             "3. Restart the backend"
@@ -142,27 +142,28 @@ async def get_mcp_info(thread_id: str) -> ChatResponse:
     enabled_servers = mcp_manager.enabled_servers
     all_tools = mcp_manager.get_all_tools()
 
-    response_parts = ["**MCP Servers**\n"]
+    response_parts = ["### 🔌 MCP Servers\n"]
 
     if not enabled_servers:
         response_parts.append("No MCP servers are currently enabled.\n")
     else:
-        response_parts.append(f"**Enabled Servers**: {len(enabled_servers)}\n")
+        response_parts.append(f"**Enabled Servers:** {len(enabled_servers)} | **Total Tools:** {len(all_tools)}\n")
+        
         for server_name, server_config in enabled_servers.items():
             server_tools = mcp_manager.get_tools_by_server(server_name)
-            response_parts.append(f"\n**{server_name}**")
-            response_parts.append(f"  - Command: `{server_config.command}`")
-            response_parts.append(f"  - Tools: {len(server_tools)}")
+            
+            response_parts.append(f"\n---\n")
+            response_parts.append(f"#### 🔧 {server_name}")
+            response_parts.append(f"- **Command:** `{server_config.command}`")
+            response_parts.append(f"- **Tools Available:** {len(server_tools)}\n")
 
             if server_tools:
-                response_parts.append("  - Available tools:")
-                for tool in server_tools[:10]:  # Limit to first 10
-                    response_parts.append(f"    • `{tool.name}`: {tool.description[:80]}...")
-                if len(server_tools) > 10:
-                    response_parts.append(f"    • ... and {len(server_tools) - 10} more")
+                response_parts.append("**Available Tools:**\n")
+                for tool in server_tools:  # Show all tools
+                    response_parts.append(f"- **`{tool.name}`**  \n  {tool.description}")
 
-    response_parts.append(f"\n**Total Tools Available**: {len(all_tools)}")
-    response_parts.append("\nUse `/tools` to see all tools across all servers.")
+    response_parts.append("\n---\n")
+    response_parts.append(f"💡 **Tip:** Use `/tools` to see all {len(all_tools)} tools grouped by type")
 
     return ChatResponse(
         response="\n".join(response_parts),
@@ -183,8 +184,8 @@ async def get_tools_info(thread_id: str) -> ChatResponse:
         )
 
     tools = agent.tools
-    response_parts = ["**Available Tools**\n"]
-    response_parts.append(f"**Total Tools**: {len(tools)}\n")
+    response_parts = ["### 🛠️ Available Tools\n"]
+    response_parts.append(f"**Total:** {len(tools)} tools\n")
 
     # Group tools by type
     mcp_tools = [t for t in tools if "-" in t.name and "_" in t.name]
@@ -192,22 +193,35 @@ async def get_tools_info(thread_id: str) -> ChatResponse:
     other_tools = [t for t in tools if t not in mcp_tools and t not in rag_tools]
 
     if mcp_tools:
-        response_parts.append(f"**MCP Tools** ({len(mcp_tools)}):")
+        response_parts.append(f"\n---\n")
+        response_parts.append(f"#### 🔧 MCP Tools ({len(mcp_tools)})\n")
+        
+        # Group MCP tools by server
+        from collections import defaultdict
+        by_server = defaultdict(list)
         for tool in mcp_tools:
-            response_parts.append(f"  • `{tool.name}`")
-            response_parts.append(f"    {tool.description[:100]}...")
+            server_name = tool.name.split("_")[0] if "_" in tool.name else "unknown"
+            by_server[server_name].append(tool)
+        
+        for server_name, server_tools in by_server.items():
+            response_parts.append(f"\n**{server_name}** ({len(server_tools)} tools):")
+            for tool in server_tools:
+                response_parts.append(f"- **`{tool.name}`**  \n  {tool.description}")
 
     if rag_tools:
-        response_parts.append(f"\n**RAG Tools** ({len(rag_tools)}):")
+        response_parts.append(f"\n---\n")
+        response_parts.append(f"#### 📚 RAG Tools ({len(rag_tools)})\n")
         for tool in rag_tools:
-            response_parts.append(f"  • `{tool.name}`")
-            response_parts.append(f"    {tool.description[:100]}...")
+            response_parts.append(f"- **`{tool.name}`**  \n  {tool.description}")
 
     if other_tools:
-        response_parts.append(f"\n**Other Tools** ({len(other_tools)}):")
+        response_parts.append(f"\n---\n")
+        response_parts.append(f"#### ⚙️ Other Tools ({len(other_tools)})\n")
         for tool in other_tools:
-            response_parts.append(f"  • `{tool.name}`")
-            response_parts.append(f"    {tool.description[:100]}...")
+            response_parts.append(f"- **`{tool.name}`**  \n  {tool.description}")
+    
+    response_parts.append("\n---\n")
+    response_parts.append("💡 **Tip:** Ask natural questions and I'll choose the right tools automatically!")
 
     return ChatResponse(
         response="\n".join(response_parts),
@@ -219,25 +233,50 @@ async def get_tools_info(thread_id: str) -> ChatResponse:
 
 def get_help_info(thread_id: str) -> ChatResponse:
     """Get help information about available commands."""
-    response = """**Available Commands**
+    response = """### 💬 Help & Commands
 
-**Slash Commands**:
-  • `/mcp` - List MCP servers and their tools
-  • `/tools` - List all available tools
-  • `/help` - Show this help message
+#### Slash Commands
 
-**MCP Servers**:
-  MCP (Model Context Protocol) servers provide external tools and capabilities.
-  Use `/mcp` to see which servers are connected and what tools they provide.
+- `/mcp` - 🔌 List MCP servers and their tools
+- `/tools` - 🛠️ List all available tools by category
+- `/help` - ❓ Show this help message
 
-**Usage**:
-  Just type your question naturally, and the agent will use the appropriate tools.
-  For sensitive operations (like Splunk queries), you'll be asked to approve the action.
+---
 
-**Examples**:
-  - "What Splunk indexes are available?"
-  - "Search for error logs in the last hour"
-  - "What does this document say about security?"
+#### About MCP Servers
+
+**MCP (Model Context Protocol)** servers provide external tools and capabilities:
+
+- **Splunk MCP** - Query and analyze Splunk data
+- **Atlassian MCP** - Work with Jira and Confluence
+
+Use `/mcp` to see which servers are connected and what tools they provide.
+
+---
+
+#### How to Use
+
+**Just ask naturally!** The agent will automatically:
+1. Choose the right tools for your question
+2. Request approval for sensitive operations
+3. Execute tools and provide answers
+
+**Examples:**
+
+- *"What Splunk indexes are available?"*
+- *"Search for error logs in the last hour"*
+- *"What does this document say about security?"*
+- *"Show me recent Jira issues"*
+
+---
+
+#### Document Upload
+
+Upload PDFs, TXT, or DOCX files using the sidebar to add them to the knowledge base for RAG-based Q&A.
+
+---
+
+💡 **Tip:** For sensitive operations (like running Splunk queries), you'll be prompted to approve before execution.
 """
 
     return ChatResponse(
