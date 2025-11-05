@@ -112,6 +112,7 @@ class DocumentProcessor:
         # For bytes input, we need to write to temporary file
         # since most loaders expect file paths
         import tempfile
+        from datetime import datetime
 
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_file:
             if isinstance(file_content, bytes):
@@ -122,9 +123,13 @@ class DocumentProcessor:
 
         try:
             documents = self.load_document(tmp_path)
-            # Add source metadata
+            # Add enhanced metadata
+            upload_timestamp = datetime.now().isoformat()
             for doc in documents:
                 doc.metadata["source"] = filename
+                doc.metadata["upload_timestamp"] = upload_timestamp
+                # Store normalized filename for duplicate detection
+                doc.metadata["normalized_source"] = Path(filename).name.lower()
             return documents
         finally:
             # Clean up temporary file

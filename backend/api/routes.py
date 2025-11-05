@@ -90,6 +90,38 @@ class UploadResponse(BaseModel):
     chunks_created: int
 
 
+class DocumentInfo(BaseModel):
+    """Document information."""
+
+    source: str
+    chunk_count: int
+
+
+class DocumentListResponse(BaseModel):
+    """Document list response."""
+
+    documents: list[DocumentInfo]
+    total_documents: int
+
+
+class BulkUploadResult(BaseModel):
+    """Single file upload result in bulk operation."""
+
+    filename: str
+    success: bool
+    message: str
+    chunks_created: int
+
+
+class BulkUploadResponse(BaseModel):
+    """Bulk document upload response."""
+
+    results: list[BulkUploadResult]
+    total_uploaded: int
+    total_skipped: int
+    total_failed: int
+
+
 # Helper Functions
 
 
@@ -469,6 +501,103 @@ async def approve_action(request: ApprovalRequest) -> dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/upload-bulk", response_model=BulkUploadResponse)
+async def upload_documents_bulk(files: list[UploadFile] = File(...)) -> BulkUploadResponse:
+    """
+    Upload multiple documents for RAG indexing.
+
+    Args:
+        files: List of uploaded files
+
+    Returns:
+        Bulk upload status with results for each file
+
+    Raises:
+        HTTPException: If processing is not initialized
+    """
+    if not document_processor or not vectorstore:
+        raise HTTPException(status_code=503, detail="Document processing not initialized")
+
+    logger.info(f"Bulk document upload: {len(files)} files")
+
+    results = []
+    total_uploaded = 0
+    total_skipped = 0
+    total_failed = 0
+
+    for file in files:
+        filename = file.filename or "unknown"
+        logger.info(f"Processing file: {filename}")
+
+        try:
+            # Check for duplicates
+            if vectorstore.check_document_exists(filename):
+                logger.warning(f"Duplicate document skipped: {filename}")
+                results.append(
+                    BulkUploadResult(
+                        filename=filename,
+                        success=False,
+                        message=f"Document already exists: {filename}",
+                        chunks_created=0,
+                    )
+                )
+                total_skipped += 1
+                continue
+
+            # Read file content
+            content = await file.read()
+
+            # Process document
+            chunks = document_processor.process_from_bytes(content, filename)
+
+            # Add to vector store
+            vectorstore.add_documents(chunks)
+
+            logger.info(f"Successfully processed {filename}: {len(chunks)} chunks created")
+
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=True,
+                    message="Document uploaded and indexed successfully",
+                    chunks_created=len(chunks),
+                )
+            )
+            total_uploaded += 1
+
+        except ValueError as e:
+            # Unsupported file format
+            logger.warning(f"Unsupported file format: {filename} - {e}")
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=False,
+                    message=str(e),
+                    chunks_created=0,
+                )
+            )
+            total_failed += 1
+
+        except Exception as e:
+            logger.error(f"Error processing {filename}: {e}", exc_info=True)
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=False,
+                    message=f"Upload failed: {str(e)}",
+                    chunks_created=0,
+                )
+            )
+            total_failed += 1
+
+    return BulkUploadResponse(
+        results=results,
+        total_uploaded=total_uploaded,
+        total_skipped=total_skipped,
+        total_failed=total_failed,
+    )
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
     """
@@ -486,30 +615,42 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
     if not document_processor or not vectorstore:
         raise HTTPException(status_code=503, detail="Document processing not initialized")
 
-    logger.info(f"Document upload: {file.filename}")
+    filename = file.filename or "unknown"
+    logger.info(f"Document upload: {filename}")
 
     try:
+        # Check for duplicates
+        if vectorstore.check_document_exists(filename):
+            logger.warning(f"Duplicate document rejected: {filename}")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Document already exists: {filename}. Please delete the existing document first or use a different filename.",
+            )
+
         # Read file content
         content = await file.read()
 
         # Process document
-        chunks = document_processor.process_from_bytes(content, file.filename or "unknown")
+        chunks = document_processor.process_from_bytes(content, filename)
 
         # Add to vector store
         vectorstore.add_documents(chunks)
 
-        logger.info(f"Successfully processed {file.filename}: {len(chunks)} chunks created")
+        logger.info(f"Successfully processed {filename}: {len(chunks)} chunks created")
 
         return UploadResponse(
             success=True,
             message="Document uploaded and indexed successfully",
-            filename=file.filename or "unknown",
+            filename=filename,
             chunks_created=len(chunks),
         )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions (like duplicate check)
+        raise
     except ValueError as e:
         # Unsupported file format
-        logger.warning(f"Unsupported file format: {file.filename}")
+        logger.warning(f"Unsupported file format: {filename}")
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
@@ -557,6 +698,76 @@ async def get_conversation(thread_id: str) -> dict:
 
     except Exception as e:
         logger.error(f"Error retrieving conversation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/documents", response_model=DocumentListResponse)
+async def list_documents() -> DocumentListResponse:
+    """
+    Get list of all documents in the vector store.
+
+    Returns:
+        List of documents with chunk counts
+
+    Raises:
+        HTTPException: If vectorstore is not initialized
+    """
+    if not vectorstore:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    try:
+        documents = vectorstore.get_document_list()
+
+        return DocumentListResponse(
+            documents=[DocumentInfo(**doc) for doc in documents],
+            total_documents=len(documents),
+        )
+
+    except Exception as e:
+        logger.error(f"Error listing documents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/documents/{source_filename}")
+async def delete_document(source_filename: str) -> dict:
+    """
+    Delete a specific document from the vector store.
+
+    Args:
+        source_filename: The source filename to delete (URL encoded)
+
+    Returns:
+        Delete status with number of chunks deleted
+
+    Raises:
+        HTTPException: If vectorstore is not initialized or error occurs
+    """
+    if not vectorstore:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    logger.info(f"Delete request for document: {source_filename}")
+
+    try:
+        # URL decode the filename (FastAPI does this automatically, but being explicit)
+        from urllib.parse import unquote
+
+        decoded_filename = unquote(source_filename)
+
+        chunks_deleted = vectorstore.delete_document_by_source(decoded_filename)
+
+        if chunks_deleted == 0:
+            raise HTTPException(status_code=404, detail=f"Document not found: {decoded_filename}")
+
+        return {
+            "success": True,
+            "message": f"Document '{decoded_filename}' deleted successfully",
+            "chunks_deleted": chunks_deleted,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

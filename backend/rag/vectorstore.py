@@ -163,6 +163,96 @@ class VectorStoreManager:
         else:
             logger.info("No documents to clear")
 
+    def get_document_list(self) -> list[dict]:
+        """
+        Get list of all documents in the vector store with chunk counts.
+
+        Returns:
+            List of dictionaries with document info: [{source, chunk_count}, ...]
+        """
+        collection = self.vectorstore._collection
+        results = collection.get(include=["metadatas"])
+
+        if not results["ids"]:
+            logger.info("No documents in vector store")
+            return []
+
+        # Group chunks by source filename
+        from collections import defaultdict
+
+        source_counts: dict[str, int] = defaultdict(int)
+
+        for metadata in results["metadatas"]:
+            if metadata and "source" in metadata:
+                source_counts[metadata["source"]] += 1
+
+        # Convert to list of dicts
+        documents = [
+            {"source": source, "chunk_count": count}
+            for source, count in sorted(source_counts.items())
+        ]
+
+        logger.info(f"Found {len(documents)} unique document(s) with {len(results['ids'])} total chunks")
+
+        return documents
+
+    def delete_document_by_source(self, source_filename: str) -> int:
+        """
+        Delete all chunks associated with a source filename.
+
+        Args:
+            source_filename: The source filename to delete
+
+        Returns:
+            Number of chunks deleted
+        """
+        logger.info(f"Deleting document: {source_filename}")
+
+        collection = self.vectorstore._collection
+
+        # Query for all chunks with this source
+        results = collection.get(
+            where={"source": source_filename},
+            include=["metadatas"],
+        )
+
+        ids_to_delete = results["ids"]
+
+        if not ids_to_delete:
+            logger.warning(f"No chunks found for source: {source_filename}")
+            return 0
+
+        # Delete the chunks
+        collection.delete(ids=ids_to_delete)
+
+        logger.info(f"Deleted {len(ids_to_delete)} chunk(s) for {source_filename}")
+
+        return len(ids_to_delete)
+
+    def check_document_exists(self, source_filename: str) -> bool:
+        """
+        Check if a document with the given source filename exists.
+
+        Args:
+            source_filename: The source filename to check
+
+        Returns:
+            True if document exists, False otherwise
+        """
+        collection = self.vectorstore._collection
+
+        # Query for any chunks with this source
+        results = collection.get(
+            where={"source": source_filename},
+            limit=1,
+        )
+
+        exists = len(results["ids"]) > 0
+
+        logger.debug(f"Document exists check for '{source_filename}': {exists}")
+
+        return exists
+
 
 def create_vectorstore(
     persist_directory: str | Path = "./data/chroma_db",

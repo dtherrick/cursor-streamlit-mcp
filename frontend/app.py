@@ -88,8 +88,74 @@ def upload_document(file) -> dict[str, Any] | None:
         response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=120)
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 409:
+            st.error(f"Duplicate: {file.name} already exists in the vector store")
+        else:
+            st.error(f"Error uploading document: {e}")
+        return None
     except Exception as e:
         st.error(f"Error uploading document: {e}")
+        return None
+
+
+def upload_documents_bulk(files: list) -> dict[str, Any] | None:
+    """
+    Upload multiple documents to API.
+
+    Args:
+        files: List of file objects from Streamlit file uploader
+
+    Returns:
+        Bulk upload response or None if error
+    """
+    try:
+        files_data = [("files", (file.name, file, file.type)) for file in files]
+        response = requests.post(f"{API_BASE_URL}/upload-bulk", files=files_data, timeout=300)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Error uploading documents: {e}")
+        return None
+
+
+def get_documents() -> dict[str, Any] | None:
+    """
+    Get list of documents from API.
+
+    Returns:
+        Document list response or None if error
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/documents", timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Error fetching documents: {e}")
+        return None
+
+
+def delete_document(source_filename: str) -> dict[str, Any] | None:
+    """
+    Delete a document from the vector store.
+
+    Args:
+        source_filename: Source filename to delete
+
+    Returns:
+        Delete response or None if error
+    """
+    try:
+        from urllib.parse import quote
+
+        encoded_filename = quote(source_filename, safe="")
+        response = requests.delete(
+            f"{API_BASE_URL}/documents/{encoded_filename}", timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Error deleting document: {e}")
         return None
 
 
@@ -117,6 +183,52 @@ def approve_action(decisions: list[dict]) -> dict[str, Any] | None:
     except Exception as e:
         st.error(f"Error approving action: {e}")
         return None
+
+
+def render_document_manager() -> None:
+    """Render document management UI."""
+    st.subheader("📚 Document Library")
+
+    # Add refresh button
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        refresh = st.button("🔄", help="Refresh document list")
+
+    # Fetch documents
+    docs_response = get_documents()
+
+    if docs_response:
+        documents = docs_response.get("documents", [])
+        total = docs_response.get("total_documents", 0)
+
+        if total > 0:
+            st.caption(f"**{total} document(s) indexed**")
+
+            for doc in documents:
+                source = doc["source"]
+                chunk_count = doc["chunk_count"]
+
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
+
+                    with col1:
+                        st.text(f"📄 {source}")
+                        st.caption(f"{chunk_count} chunks")
+
+                    with col2:
+                        # Use unique key for each delete button
+                        if st.button("🗑️", key=f"delete_{source}", help=f"Delete {source}"):
+                            with st.spinner(f"Deleting {source}..."):
+                                result = delete_document(source)
+                                if result and result.get("success"):
+                                    st.success(f"✅ Deleted {source}")
+                                    st.rerun()
+
+                    st.divider()
+        else:
+            st.info("No documents uploaded yet")
+    else:
+        st.warning("Could not fetch document list")
 
 
 def render_sidebar() -> None:
@@ -219,21 +331,54 @@ def render_sidebar() -> None:
 
         # Document upload
         st.subheader("📄 Upload Documents")
-        uploaded_file = st.file_uploader(
-            "Choose a file",
+        uploaded_files = st.file_uploader(
+            "Choose file(s)",
             type=["pdf", "txt", "docx"],
-            help="Upload documents for RAG indexing",
+            help="Upload documents for RAG indexing (supports multiple files)",
+            accept_multiple_files=True,
         )
 
-        if uploaded_file and st.button("Index Document"):
-            with st.spinner("Processing document..."):
-                result = upload_document(uploaded_file)
-                if result and result.get("success"):
-                    st.success(
-                        f"✅ {result['filename']} indexed ({result['chunks_created']} chunks)"
-                    )
-                else:
-                    st.error("Failed to upload document")
+        if uploaded_files and st.button("Index Document(s)"):
+            if len(uploaded_files) == 1:
+                # Single file upload
+                with st.spinner("Processing document..."):
+                    result = upload_document(uploaded_files[0])
+                    if result and result.get("success"):
+                        st.success(
+                            f"✅ {result['filename']} indexed ({result['chunks_created']} chunks)"
+                        )
+                        st.rerun()
+            else:
+                # Bulk upload
+                with st.spinner(f"Processing {len(uploaded_files)} documents..."):
+                    result = upload_documents_bulk(uploaded_files)
+                    if result:
+                        total_uploaded = result.get("total_uploaded", 0)
+                        total_skipped = result.get("total_skipped", 0)
+                        total_failed = result.get("total_failed", 0)
+
+                        # Show summary
+                        if total_uploaded > 0:
+                            st.success(f"✅ {total_uploaded} document(s) uploaded successfully")
+                        if total_skipped > 0:
+                            st.warning(f"⚠️ {total_skipped} document(s) skipped (duplicates)")
+                        if total_failed > 0:
+                            st.error(f"❌ {total_failed} document(s) failed")
+
+                        # Show details
+                        with st.expander("View Details"):
+                            for file_result in result.get("results", []):
+                                status_icon = "✅" if file_result["success"] else "❌"
+                                st.text(
+                                    f"{status_icon} {file_result['filename']}: {file_result['message']}"
+                                )
+                        
+                        st.rerun()
+
+        st.divider()
+
+        # Document library
+        render_document_manager()
 
         st.divider()
 
