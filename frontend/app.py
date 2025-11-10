@@ -471,11 +471,8 @@ def render_chat() -> None:
         # Add user message to chat
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
         # Get agent response
-        with st.chat_message("assistant"), st.spinner("Thinking..."):
+        with st.spinner("Thinking..."):
             response = send_message(prompt)
 
             if response:
@@ -484,14 +481,13 @@ def render_chat() -> None:
                     st.session_state.pending_approval = response.get("approval_details")
                     st.rerun()
                 else:
-                    # Display response
+                    # Add assistant response to chat history
                     assistant_message = response.get("response", "No response")
-                    st.markdown(assistant_message)
-
-                    # Add to chat history
                     st.session_state.messages.append(
                         {"role": "assistant", "content": assistant_message}
                     )
+                    # Rerun to display the new message through the main loop
+                    st.rerun()
 
 
 def main() -> None:
